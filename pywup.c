@@ -42,22 +42,27 @@ static PyObject * pywup_initialise(PyObject *self, PyObject *args){
 }
 
 
-static XFile * pywup_xfile_open(){
-	return xfile_open(dpy, win, pen, width, height);
-
+static PyObject * pywup_xfile_open(PyObject *self, PyObject *args){
+    XFile *xf = xfile_open(dpy, win, pen, width, height); // [cite: 1, 4]
+    return PyCapsule_New(xf, "XFilePtr", NULL);
 }
 
-static PyObject * pywup_displayFrame(XFile *display_file){
-	displayFrame(display_file);
-	Py_RETURN_NONE;
-
+static PyObject * pywup_displayFrame(PyObject *self, PyObject *args){
+    PyObject *capsule;
+    // Parse the capsule sent from Python
+    if (!PyArg_ParseTuple(args, "O", &capsule)) return NULL;
+    XFile *xf = (XFile *)PyCapsule_GetPointer(capsule, "XFilePtr");
+    if (xf) {
+        displayFrame(xf); // [cite: 1, 4]
+    }
+    Py_RETURN_NONE;
 }
 
 
 static PyMethodDef pywup_methods[] = {
         {"run_test", (PyCFunction)run_test, METH_VARARGS, "Runs the X11 test loop"},
-        {"initialise", (PyCFunction)pywup_initialise, METH_NOARGS, "Initializes X11"},
-	{"xfile_open", (PyCFunction)pywup_xfile_open, METH_NOARGS, "Opens an xfile"},
+        {"initialise", (PyCFunction)pywup_initialise, METH_VARARGS, "Initializes X11"},
+	{"xfile_open", (PyCFunction)pywup_xfile_open, METH_VARARGS, "Opens an xfile"},
 	{"displayFrame", (PyCFunction)pywup_displayFrame, METH_VARARGS, "Displays the frame"},
         {NULL, NULL, 0, NULL}
 
