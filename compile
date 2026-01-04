@@ -1,1 +1,2 @@
-gcc pywup.c cwup.o -lX11 -o pywup
+#gcc -I/usr/include/python3.12 pywup.c cwup.o -lX11 -o pywup
+gcc -shared -o pywup.so -fPIC -I/usr/include/python3.12 pywup.c cwup.o -lX11
