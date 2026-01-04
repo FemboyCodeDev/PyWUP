@@ -10,7 +10,6 @@ on:
     - cron: "30 19 * * *"
 
 jobs:
-  # --- Job 1: Download the pre-compiled objects from GitHub Releases ---
   fetch-objects:
     name: Fetch Object Files
     runs-on: ubuntu-latest
@@ -27,7 +26,6 @@ jobs:
           name: remote-objects
           path: deps/
 
-  # --- Job 2: Compile the Python Shared Libraries ---
   compile-python:
     needs: fetch-objects
     name: Compile for ${{ matrix.platform }}
@@ -63,14 +61,15 @@ jobs:
         if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libx11-dev
-          gcc -shared -o ${{ matrix.output }} -fPIC -I/usr/include/python3.12 pywup.c ${{ matrix.obj_file }} -lX11
+          sudo apt-get install -y libx11-dev python3.12-dev
+          # We use python3-config to get the correct include flags dynamically :3
+          gcc -shared -o ${{ matrix.output }} -fPIC $(python3-config --includes) pywup.c ${{ matrix.obj_file }} -lX11
 
       - name: Build (Windows)
         if: matrix.platform == 'windows'
         shell: cmd
         run: |
-          :: Use the dynamic python location provided by setup-python
+          :: On Windows, setup-python provides %pythonLocation%
           gcc -shared -o ${{ matrix.output }} -I"%pythonLocation%\include" pywup.c ${{ matrix.obj_file }} -L"%pythonLocation%" -lpython312
 
       - name: Upload Compiled Extension
@@ -79,7 +78,6 @@ jobs:
           name: pywup-${{ matrix.platform }}
           path: ${{ matrix.output }}
 
-  # --- Job 3: Create the Nightly Release for the Python Module ---
   release-extension:
     needs: compile-python
     runs-on: ubuntu-latest
@@ -103,8 +101,7 @@ jobs:
           name: "pywup Extension Nightly"
           body: |
             Automatic build of the Python extension.
-            Using latest objects from FemboyCodeDev/CWUP.
-            Built on: ${{ github.sha }}
+            Ref: ${{ github.sha }}
           overwrite_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
