@@ -1,0 +1,110 @@
+name: Build pywup Extension (From Release)
+
+on:
+  push:
+    branches:
+      - main
+      - release/*
+  workflow_dispatch:
+  schedule:
+    - cron: "30 19 * * *"
+
+jobs:
+  # --- Job 1: Download the pre-compiled objects from GitHub Releases ---
+  fetch-objects:
+    name: Fetch Object Files
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Objects
+        run: |
+          mkdir -p deps
+          curl -L -o deps/cwup-linux.o https://github.com/FemboyCodeDev/CWUP/releases/download/latest/cwup-linux.o
+          curl -L -o deps/cwup-windows.o https://github.com/FemboyCodeDev/CWUP/releases/download/latest/cwup-windows.o
+
+      - name: Upload for Build Jobs
+        uses: actions/upload-artifact@v4
+        with:
+          name: remote-objects
+          path: deps/
+
+  # --- Job 2: Compile the Python Shared Libraries ---
+  compile-python:
+    needs: fetch-objects
+    name: Compile for ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            platform: linux
+            output: pywup.so
+            obj_file: cwup-linux.o
+          - os: windows-latest
+            platform: windows
+            output: pywup.pyd
+            obj_file: cwup-windows.o
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Download Objects
+        uses: actions/download-artifact@v4
+        with:
+          name: remote-objects
+          path: .
+
+      - name: Build (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-dev
+          gcc -shared -o ${{ matrix.output }} -fPIC -I/usr/include/python3.12 pywup.c ${{ matrix.obj_file }} -lX11
+
+      - name: Build (Windows)
+        if: matrix.platform == 'windows'
+        shell: cmd
+        run: |
+          :: Use the dynamic python location provided by setup-python
+          gcc -shared -o ${{ matrix.output }} -I"%pythonLocation%\include" pywup.c ${{ matrix.obj_file }} -L"%pythonLocation%" -lpython312
+
+      - name: Upload Compiled Extension
+        uses: actions/upload-artifact@v4
+        with:
+          name: pywup-${{ matrix.platform }}
+          path: ${{ matrix.output }}
+
+  # --- Job 3: Create the Nightly Release for the Python Module ---
+  release-extension:
+    needs: compile-python
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pywup-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Publish Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-assets/pywup.so
+            release-assets/pywup.pyd
+          tag_name: "latest-python-extension"
+          name: "pywup Extension Nightly"
+          body: |
+            Automatic build of the Python extension.
+            Using latest objects from FemboyCodeDev/CWUP.
+            Built on: ${{ github.sha }}
+          overwrite_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
